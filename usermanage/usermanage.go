@@ -8,8 +8,9 @@ import (
 	//"text/scanner"
 	"bufio"
 	"errors"
-	"strconv"
 	invalid "github.com/asaskevich/govalidator"
+	"strconv"
+	"unicode"
 )
 
 type User struct {
@@ -21,23 +22,46 @@ type User struct {
 	EmailIds  []string
 }
 
-
+// TODO: Add db does not exist error message
 
 var numOfErrors = 0 // should remove redundant code related to this
+var db = []string{"db/usernames.txt", "db/ages.txt", "db/emailids.txt", "db/firstnames.txt", "db/lastnames.txt", "db/mobilenums.txt"}
 
 // Application functionalities
+
+func DbReset() { // Add warning system
+	for _, filename := range db {
+		// os.Remove(filename)
+		os.Create(filename)
+	}
+	fmt.Println("DATABASE RESET!")
+}
 
 func CreateRecord(usrName string, firstName string, lastName string, age int, mobileNos []int, emailIds []string) {
 	newUser := User{usrName, firstName, lastName, age, mobileNos, emailIds}
 	if validateAll(&newUser) {
-		if checkIfRequiredFilesExist([]string{"db/data.txt", "db/usernames.txt"}) {
-		usrDetails := fmt.Sprintf("Username: %s\n First Name: %s\n Last Name: %s\n Age: %d\n Mobile No.[s]: %d\n Email-id[s]: %s\n \n ", newUser.UsrName, newUser.FirstName, newUser.LastName, newUser.Age, newUser.MobileNos, newUser.EmailIds)
-		writeToFile("db/data.txt", usrDetails)
-    newUser.UsrName = fmt.Sprintf("%s\n", newUser.UsrName)
-		writeToFile("db/usernames.txt", newUser.UsrName)    // SYNCHRONISE EXECUTION
-	  fmt.Println("User Created!")
- }
- } 
+		if checkIfRequiredFilesExist(db) {
+			newUser.UsrName = fmt.Sprintf("%s\n", newUser.UsrName)
+			writeToFile("db/usernames.txt", newUser.UsrName)
+
+			newUser.FirstName = fmt.Sprintf("%s\n", newUser.FirstName)
+			writeToFile("db/firstnames.txt", newUser.FirstName)
+
+			newUser.LastName = fmt.Sprintf("%s\n", newUser.LastName)
+			writeToFile("db/lastnames.txt", newUser.LastName)
+
+			age := fmt.Sprintf("%s\n", strconv.Itoa(newUser.Age))
+			writeToFile("db/ages.txt", age)
+
+			mobilenums := fmt.Sprintf("%s\n", arrIntToarrStr(newUser.MobileNos))
+			writeToFile("db/mobilenums.txt", mobilenums)
+
+			emailids := fmt.Sprintf("%s\n", newUser.EmailIds)
+			writeToFile("db/emailids.txt", emailids)
+
+			fmt.Println("User Created!")
+		}
+	}
 }
 
 func UpdateRecord() {
@@ -53,7 +77,8 @@ func DeleteRecord() {
 func validateAll(user *User) bool {
 	_ = validateUserName(user)
 
-  _ = validateAge(user)
+	_ = validateAge(user)
+
 	for _, num := range user.MobileNos {
 		_ = validateMobileNo(num, user)
 	}
@@ -66,7 +91,7 @@ func validateAll(user *User) bool {
 }
 
 func validateAge(user *User) error {
-	if !(invalid.IsNatural(float64(user.Age))){
+	if !(invalid.IsNatural(float64(user.Age))) {
 		errMsg := fmt.Sprintf("The age has to be above 0 for the user %s", user.UsrName)
 		err := errors.New(errMsg)
 		checkErrorWithCount(err, &numOfErrors)
@@ -76,7 +101,8 @@ func validateAge(user *User) error {
 }
 
 func validateUserName(user *User) error {
-	if queryString(strings.ToLower(user.UsrName), "db/usernames.txt") {
+	user.UsrName = stripSpaces(strings.ToLower(user.UsrName))
+	if queryString((user.UsrName), "db/usernames.txt") {
 		errMsg := fmt.Sprintf("%s (Username) already taken", user.UsrName)
 		err := errors.New(errMsg)
 		checkErrorWithCount(err, &numOfErrors)
@@ -97,15 +123,14 @@ func validateMobileNo(number int, user *User) error {
 }
 
 func validateEmailId(email string, user *User) error {
- if !(invalid.IsEmail(email)) {
-	 errMsg := fmt.Sprintf("Please enter a valid email id for the user: %s", user.UsrName)
-	 err := errors.New(errMsg)
-	 checkErrorWithCount(err, &numOfErrors)
-	 return err
- }
- return nil
+	if !(invalid.IsEmail(email)) {
+		errMsg := fmt.Sprintf("Please enter a valid email id for the user: %s", user.UsrName)
+		err := errors.New(errMsg)
+		checkErrorWithCount(err, &numOfErrors)
+		return err
+	}
+	return nil
 }
-
 
 // Useful functions
 
@@ -144,7 +169,7 @@ func checkTotalErrors() bool {
 	return (numOfErrors == 0)
 }
 
-func checkErrorWithCount(e error, errCount *int) {  // Change the function to support global var numOfErrors
+func checkErrorWithCount(e error, errCount *int) { // Change the function to support global var numOfErrors
 	if e != nil {
 		fmt.Println(e)
 		*errCount += 1
@@ -153,8 +178,31 @@ func checkErrorWithCount(e error, errCount *int) {  // Change the function to su
 
 func checkIfRequiredFilesExist(files []string) bool {
 	for _, file := range files {
-	_, err := os.OpenFile(file, os.O_RDWR, 0644)
-	checkErrorWithCount(err, &numOfErrors)
- }
- return checkTotalErrors()
+		_, err := os.OpenFile(file, os.O_RDWR, 0644)
+		checkErrorWithCount(err, &numOfErrors)
+	}
+	return checkTotalErrors()
+}
+
+func arrIntToarrStr(ints []int) (cons []string) {
+	cons = make([]string, len(ints))
+	for _, num := range ints {
+		for i := 0; i < len(ints); i++ {
+			cons[i] = strconv.Itoa(num)
+		}
+	}
+	return cons
+}
+
+
+
+func stripSpaces(str string) string {   // STACKOVERFLOW credited for this func
+    return strings.Map(func(r rune) rune {  // mapping function allows for character-wise modification of a string
+        if unicode.IsSpace(r) {
+            // if the character is a space, drop it
+            return -1
+        }
+        // else keep it in the string
+        return r
+    } , str)
 }
