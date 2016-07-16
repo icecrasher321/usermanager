@@ -27,11 +27,12 @@ type User struct {
 var numOfErrors = 0 // should remove redundant code related to this
 var db = []string{"db/usernames.txt", "db/ages.txt", "db/emailids.txt", "db/firstnames.txt", "db/lastnames.txt", "db/mobilenums.txt"}
 
+// only add new filenames to the end of the array
+
 // Application functionalities
 
 func DbReset() { // Add warning system
 	for _, filename := range db {
-		// os.Remove(filename)
 		os.Create(filename)
 	}
 	fmt.Println("DATABASE RESET!")
@@ -68,8 +69,20 @@ func UpdateRecord() {
 	fmt.Println("Not Ready")
 }
 
-func DeleteRecord() {
-	fmt.Println("Not Ready")
+func DeleteRecord(usrName string) {
+	if checkIfRequiredFilesExist(db) {
+		if queryString(usrName, "db/usernames.txt") == false {
+			fmt.Println("The following user does not exist: ", usrName)
+		} else {
+			usernames := fileToArray("db/usernames.txt")
+			line := lineNum(usrName, usernames)
+			simpleDB := []string{"db/usernames.txt", "db/ages.txt", "db/firstnames.txt", "db/lastnames.txt"} // simple single strings
+			removeStringsFromDb(line, simpleDB)
+			complexDB := []string{"db/emailids.txt", "db/mobilenums.txt"} // array files
+			removeArraysFromDb(line, complexDB)
+			fmt.Println("The following user has been removed:", usrName)
+		}
+	}
 }
 
 // VALIDATIONS
@@ -186,23 +199,75 @@ func checkIfRequiredFilesExist(files []string) bool {
 
 func arrIntToarrStr(ints []int) (cons []string) {
 	cons = make([]string, len(ints))
-	for _, num := range ints {
-		for i := 0; i < len(ints); i++ {
-			cons[i] = strconv.Itoa(num)
-		}
+	for i := 0; i < len(ints); i++ {
+		cons[i] = strconv.Itoa(ints[i])
 	}
 	return cons
 }
 
+func readLine(filename string, lineNum int) (line string, lastLine int) {
+	var file, err = os.OpenFile(filename, os.O_RDWR, 0644)
+	checkErrorWithCount(err, &numOfErrors)
+	sc := bufio.NewScanner(file)
+	for sc.Scan() {
+		lastLine++
+		if lastLine == lineNum {
+			return sc.Text(), lastLine
+		}
+		if lineNum == len(fileToArray("usernames.txt")) {
+			break
+		}
+	}
+	return line, lastLine
+}
 
+func stripSpaces(str string) string { // STACKOVERFLOW credited for this func
+	return strings.Map(func(r rune) rune { // mapping function allows for character-wise modification of a string
+		if unicode.IsSpace(r) {
+			// if the character is a space, drop it
+			return -1
+		}
+		// else keep it in the string
+		return r
+	}, str)
+}
 
-func stripSpaces(str string) string {   // STACKOVERFLOW credited for this func
-    return strings.Map(func(r rune) rune {  // mapping function allows for character-wise modification of a string
-        if unicode.IsSpace(r) {
-            // if the character is a space, drop it
-            return -1
-        }
-        // else keep it in the string
-        return r
-    } , str)
+func lineNum(text string, fileArr []string) (num int) {
+	for n := 0; n < len(fileArr); n++ {
+		if text == fileArr[n] {
+			return n
+		}
+	}
+	return 0
+}
+
+// Programmable arrays - ORM type method
+
+func fileToArray(filename string) []string {
+	content, err := ioutil.ReadFile(filename)
+	checkErrorWithCount(err, &numOfErrors)
+	words := strings.Fields(string(content))
+	return words
+}
+
+func removeStringsFromDb(lnnum int, database []string) {
+	for _, field := range database {
+		fileArr := fileToArray(field)
+		fileArr = append(fileArr[:lnnum], fileArr[(lnnum+1):]...)
+		os.Create(field)
+		fileArrStr := strings.Join(fileArr, "\n")
+		writeToFile(field, fileArrStr)
+	}
+}
+
+func removeArraysFromDb(lnnum int, database []string) {
+	for _, field := range database {
+		fileArr := fileToArray(field)
+		fileArrStr := strings.Join(fileArr, " ")
+		fileArrSplit := strings.Split(fileArrStr, "] ")
+		fileArr = append(fileArrSplit[:lnnum], fileArrSplit[(lnnum+1):]...)
+		fileArrStr = strings.Join(fileArr, "]\n")
+		os.Create(field)
+		writeToFile(field, fileArrStr)
+	}
 }
