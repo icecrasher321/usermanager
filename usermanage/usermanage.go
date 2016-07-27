@@ -11,6 +11,7 @@ import (
 	invalid "github.com/asaskevich/govalidator"
 	"strconv"
 	"unicode"
+	// "unsafe"
 )
 
 type User struct {
@@ -33,6 +34,7 @@ var db = []string{"db/usernames.txt", "db/ages.txt", "db/emailids.txt", "db/firs
 
 func DbReset() { // Add warning system
 	for _, filename := range db {
+		// os.Remove(filename)
 		os.Create(filename)
 	}
 	fmt.Println("DATABASE RESET!")
@@ -40,7 +42,7 @@ func DbReset() { // Add warning system
 
 func CreateRecord(usrName string, firstName string, lastName string, age int, mobileNos []int, emailIds []string) {
 	newUser := User{usrName, firstName, lastName, age, mobileNos, emailIds}
-	if validateAll(&newUser) {
+	if validateAll(&newUser) && validateUserName(&newUser) == nil {
 		if checkIfRequiredFilesExist(db) {
 			newUser.UsrName = fmt.Sprintf("%s\n", newUser.UsrName)
 			writeToFile("db/usernames.txt", newUser.UsrName)
@@ -61,12 +63,24 @@ func CreateRecord(usrName string, firstName string, lastName string, age int, mo
 			writeToFile("db/emailids.txt", emailids)
 
 			fmt.Println("User Created!")
+		} else {
+			fmt.Println("DATABASE does NOT exist(Check if all the required files exist)")
 		}
 	}
 }
 
-func UpdateRecord() {
-	fmt.Println("Not Ready")
+func UpdateRecord(usrName string, firstName string, lastName string, age int, mobileNos []int, emailIds []string) { // STILL NEEDS DEVELOPMENT
+	if checkIfRequiredFilesExist(db) {
+		if queryString(usrName, "db/usernames.txt") == false {
+			fmt.Println("The following user does not exist: ", usrName)
+		} else {
+			user := User{usrName, firstName, lastName, age, mobileNos, emailIds}
+			if validateAll(&user) {
+				DeleteRecord(usrName)
+				CreateRecord(usrName, firstName, lastName, age, mobileNos, emailIds) // DO NOT DISPLAY MESSAGES  (Ex - CREATE message during update)
+			}
+		}
+	}
 }
 
 func DeleteRecord(usrName string) {
@@ -88,7 +102,6 @@ func DeleteRecord(usrName string) {
 // VALIDATIONS
 
 func validateAll(user *User) bool {
-	_ = validateUserName(user)
 
 	_ = validateAge(user)
 
@@ -102,6 +115,7 @@ func validateAll(user *User) bool {
 	return checkTotalErrors()
 
 }
+
 
 func validateAge(user *User) error {
 	if !(invalid.IsNatural(float64(user.Age))) {
@@ -168,7 +182,8 @@ func writeToFile(filename string, text string) {
 	for scanner.Scan() {
 		scanner.Text()
 	}
-	_, err = file.WriteString(text)
+	fmted := fmt.Sprintf("%s\n", text)
+	_, err = file.WriteString(fmted)
 	err = file.Sync()
 }
 
@@ -201,6 +216,14 @@ func arrIntToarrStr(ints []int) (cons []string) {
 	cons = make([]string, len(ints))
 	for i := 0; i < len(ints); i++ {
 		cons[i] = strconv.Itoa(ints[i])
+	}
+	return cons
+}
+
+func arrStrToarrInt(strs []string) (cons []int) {
+	cons = make([]int, len(strs))
+	for i := 0; i < len(strs); i++ {
+		cons[i], _ = strconv.Atoi(strs[i])
 	}
 	return cons
 }
@@ -241,6 +264,27 @@ func lineNum(text string, fileArr []string) (num int) {
 	return 0
 }
 
+func fetchUser(usrName string) User {
+	if checkIfRequiredFilesExist(db) {
+		if queryString(usrName, "db/usernames.txt") == false {
+			fmt.Println("The following user does not exist: ", usrName)
+		} else {
+			usernames := fileToArray("db/usernames.txt")
+			line := lineNum(usrName, usernames)
+			userName := usernames[line]
+			firstName := fetchStringFromDb(line, "db/firstnames.txt")
+			lastName := fetchStringFromDb(line, "db/lastnames.txt")
+			age, _ := strconv.Atoi(fetchStringFromDb(line, "db/ages.txt"))
+			emailids := fetchArrayFromDB(line, "db/emailids.txt")
+			mobilenums := fetchArrayFromDB(line, "db/mobilenums.txt")
+			mobilenumsInts := arrStrToarrInt(mobilenums) // test
+			user := User{userName, firstName, lastName, age, mobilenumsInts, emailids}
+			return user
+		}
+	}
+	return User{}
+}
+
 // Programmable arrays - ORM type method
 
 func fileToArray(filename string) []string {
@@ -249,6 +293,8 @@ func fileToArray(filename string) []string {
 	words := strings.Fields(string(content))
 	return words
 }
+
+// FOR DeleteRecord
 
 func removeStringsFromDb(lnnum int, database []string) {
 	for _, field := range database {
@@ -270,4 +316,24 @@ func removeArraysFromDb(lnnum int, database []string) {
 		os.Create(field)
 		writeToFile(field, fileArrStr)
 	}
+}
+
+// FOR UpdateRecord
+
+func fetchStringFromDb(line int, dbFile string) string {
+	fileArr := fileToArray(dbFile)
+	res := fileArr[line]
+	fmt.Println(res)
+	return res
+}
+
+func fetchArrayFromDB(line int, dbFile string) []string {
+	fileArr := fileToArray(dbFile)
+	fileArrStr := strings.Join(fileArr, " ")
+	fileArrStr = strings.Replace(fileArrStr, " [", "", -1)
+	fileArrStr = strings.Replace(fileArrStr, " ", ", ", -1)
+	fileArrSplit := strings.Split(fileArrStr, "]")
+
+	fmt.Println(fileArrSplit[3])
+	return fileArrSplit
 }
