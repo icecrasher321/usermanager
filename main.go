@@ -5,8 +5,11 @@ import (
 )
 
 func main() {
-	protocol()
-	// fdb.DeleteRecord("icecaft")
+	//protocol()
+	//fdb.UpdateRecord("iccraft", "flunatic3", "100", 42, []int{9741718043, 9741719085, 9741717865}, []string{"lo@tytytytyt.com", "10000@101.com"})
+	//fdb.DeleteRecord("watermelo")
+	//fdb.FindByUserName("icecraft")
+	//fdb.CreateRecord("watermelo", "Space", "X", 43, []int{9741719086, 9741719085, 9741719043}, []string{"elon@musk.com"})
 }
 
 func protocol() {
