@@ -11,7 +11,6 @@ import (
 	invalid "github.com/asaskevich/govalidator"
 	"strconv"
 	"unicode"
-	// "unsafe"
 )
 
 type User struct {
@@ -23,7 +22,7 @@ type User struct {
 	EmailIds  []string
 }
 
-// TODO: Add db does not exist error message
+// TODO: Add db does not exist error message, CONVERT the two if structure (checkIfRequiredFilesExist and queryString) into a function
 
 var numOfErrors = 0 // should remove redundant code related to this
 var db = []string{"db/usernames.txt", "db/ages.txt", "db/emailids.txt", "db/firstnames.txt", "db/lastnames.txt", "db/mobilenums.txt"}
@@ -70,33 +69,32 @@ func CreateRecord(usrName string, firstName string, lastName string, age int, mo
 }
 
 func UpdateRecord(usrName string, firstName string, lastName string, age int, mobileNos []int, emailIds []string) { // STILL NEEDS DEVELOPMENT
-	if checkIfRequiredFilesExist(db) {
-		if queryString(usrName, "db/usernames.txt") == false {
-			fmt.Println("The following user does not exist: ", usrName)
-		} else {
-			user := User{usrName, firstName, lastName, age, mobileNos, emailIds}
-			if validateAll(&user) {
-				DeleteRecord(usrName)
-				CreateRecord(usrName, firstName, lastName, age, mobileNos, emailIds) // DO NOT DISPLAY MESSAGES  (Ex - CREATE message during update)
-			}
+	setupValid(func() {
+		user := User{usrName, firstName, lastName, age, mobileNos, emailIds}
+		if validateAll(&user) {
+			DeleteRecord(usrName)
+			CreateRecord(usrName, firstName, lastName, age, mobileNos, emailIds) // DO NOT DISPLAY MESSAGES  (Ex - CREATE message during update)
 		}
-	}
+	}, usrName)
 }
 
 func DeleteRecord(usrName string) {
-	if checkIfRequiredFilesExist(db) {
-		if queryString(usrName, "db/usernames.txt") == false {
-			fmt.Println("The following user does not exist: ", usrName)
-		} else {
-			usernames := fileToArray("db/usernames.txt")
-			line := lineNum(usrName, usernames)
-			simpleDB := []string{"db/usernames.txt", "db/ages.txt", "db/firstnames.txt", "db/lastnames.txt"} // simple single strings
-			removeStringsFromDb(line, simpleDB)
-			complexDB := []string{"db/emailids.txt", "db/mobilenums.txt"} // array files
-			removeArraysFromDb(line, complexDB)
-			fmt.Println("The following user has been removed:", usrName)
-		}
-	}
+	setupValid(func() {
+		usernames := fileToArray("db/usernames.txt")
+		line := lineNum(usrName, usernames)
+		simpleDB := []string{"db/usernames.txt", "db/ages.txt", "db/firstnames.txt", "db/lastnames.txt"} // simple single strings
+		removeStringsFromDb(line, simpleDB)
+		complexDB := []string{"db/emailids.txt", "db/mobilenums.txt"} // array files
+		removeArraysFromDb(line, complexDB)
+		fmt.Println("The following user has been removed:", usrName)
+	}, usrName)
+}
+
+func FindByUserName(usrName string) {
+	setupValid(func() {
+		user := fetchUser(usrName)
+		user.printInfo()
+	}, usrName)
 }
 
 // VALIDATIONS
@@ -115,7 +113,6 @@ func validateAll(user *User) bool {
 	return checkTotalErrors()
 
 }
-
 
 func validateAge(user *User) error {
 	if !(invalid.IsNatural(float64(user.Age))) {
@@ -149,7 +146,7 @@ func validateMobileNo(number int, user *User) error {
 	return nil
 }
 
-func validateEmailId(email string, user *User) error {
+func validateEmailId(email string, user *User) error { // Make email id
 	if !(invalid.IsEmail(email)) {
 		errMsg := fmt.Sprintf("Please enter a valid email id for the user: %s", user.UsrName)
 		err := errors.New(errMsg)
@@ -182,7 +179,7 @@ func writeToFile(filename string, text string) {
 	for scanner.Scan() {
 		scanner.Text()
 	}
-	fmted := fmt.Sprintf("%s\n", text)
+	fmted := fmt.Sprintf("%s", text)
 	_, err = file.WriteString(fmted)
 	err = file.Sync()
 }
@@ -264,25 +261,16 @@ func lineNum(text string, fileArr []string) (num int) {
 	return 0
 }
 
-func fetchUser(usrName string) User {
+func setupValid(function func(), usrName string) {
 	if checkIfRequiredFilesExist(db) {
 		if queryString(usrName, "db/usernames.txt") == false {
 			fmt.Println("The following user does not exist: ", usrName)
 		} else {
-			usernames := fileToArray("db/usernames.txt")
-			line := lineNum(usrName, usernames)
-			userName := usernames[line]
-			firstName := fetchStringFromDb(line, "db/firstnames.txt")
-			lastName := fetchStringFromDb(line, "db/lastnames.txt")
-			age, _ := strconv.Atoi(fetchStringFromDb(line, "db/ages.txt"))
-			emailids := fetchArrayFromDB(line, "db/emailids.txt")
-			mobilenums := fetchArrayFromDB(line, "db/mobilenums.txt")
-			mobilenumsInts := arrStrToarrInt(mobilenums) // test
-			user := User{userName, firstName, lastName, age, mobilenumsInts, emailids}
-			return user
+			function()
 		}
+	} else {
+		fmt.Println("DATABASE does NOT exist(Check if all the required files exist)")
 	}
-	return User{}
 }
 
 // Programmable arrays - ORM type method
@@ -290,13 +278,13 @@ func fetchUser(usrName string) User {
 func fileToArray(filename string) []string {
 	content, err := ioutil.ReadFile(filename)
 	checkErrorWithCount(err, &numOfErrors)
-	words := strings.Fields(string(content))
+	words := strings.Split(string(content), "\n")
 	return words
 }
 
 // FOR DeleteRecord
 
-func removeStringsFromDb(lnnum int, database []string) {
+func removeStringsFromDb(lnnum int, database []string) { // Try remove a certain line instead of rewriting the whole file
 	for _, field := range database {
 		fileArr := fileToArray(field)
 		fileArr = append(fileArr[:lnnum], fileArr[(lnnum+1):]...)
@@ -318,22 +306,50 @@ func removeArraysFromDb(lnnum int, database []string) {
 	}
 }
 
-// FOR UpdateRecord
+// FOR Querying
 
 func fetchStringFromDb(line int, dbFile string) string {
 	fileArr := fileToArray(dbFile)
 	res := fileArr[line]
-	fmt.Println(res)
 	return res
 }
 
 func fetchArrayFromDB(line int, dbFile string) []string {
 	fileArr := fileToArray(dbFile)
-	fileArrStr := strings.Join(fileArr, " ")
-	fileArrStr = strings.Replace(fileArrStr, " [", "", -1)
-	fileArrStr = strings.Replace(fileArrStr, " ", ", ", -1)
-	fileArrSplit := strings.Split(fileArrStr, "]")
-
-	fmt.Println(fileArrSplit[3])
+	fileArrStr := fileArr[line]
+	fileArrStr = strings.Replace(fileArrStr, "[", "", -1)
+	fileArrStr = strings.Replace(fileArrStr, "]", "", -1)
+	fileArrSplit := strings.Fields(fileArrStr)
 	return fileArrSplit
 }
+
+func fetchUser(usrName string) User {
+	if checkIfRequiredFilesExist(db) {
+		if queryString(usrName, "db/usernames.txt") == false {
+			fmt.Println("The following user does not exist: ", usrName)
+		} else {
+			usernames := fileToArray("db/usernames.txt")
+			line := lineNum(usrName, usernames)
+			userName := usernames[line]
+			firstName := fetchStringFromDb(line, "db/firstnames.txt")
+			lastName := fetchStringFromDb(line, "db/lastnames.txt")
+			age, _ := strconv.Atoi(fetchStringFromDb(line, "db/ages.txt"))
+			emailids := fetchArrayFromDB(line, "db/emailids.txt")
+			mobilenums := fetchArrayFromDB(line, "db/mobilenums.txt")
+			mobilenumsInts := arrStrToarrInt(mobilenums) // test
+			user := User{userName, firstName, lastName, age, mobilenumsInts, emailids}
+			return user
+		}
+	}
+	return User{}
+}
+
+func (user *User) printInfo() { // Eventually, try to convert CRUD funtions to methods
+	fmt.Println("Username: ", user.UsrName)
+	fmt.Println("Firstname: ", user.FirstName)
+	fmt.Println("Lastname: ", user.LastName)
+	fmt.Println("Age: ", user.Age)
+	fmt.Println("Email-Id(s): ", user.EmailIds)
+	fmt.Println("Mobile-No.(s): ", user.MobileNos)
+}
+
