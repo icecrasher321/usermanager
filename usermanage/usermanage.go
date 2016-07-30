@@ -22,36 +22,49 @@ type User struct {
 	EmailIds  []string
 }
 
-// TODO: Make all functions returning bools return the error 
+// TODO: Make all functions  return  errors
 
 var numOfErrors = 0 // should remove redundant code related to this
-var db = []string{"db/usernames.txt", "db/ages.txt", "db/emailids.txt", "db/firstnames.txt", "db/lastnames.txt", "db/mobilenums.txt"}
+var db = []string{"db/usernames.txt", "db/firstnames.txt", "db/lastnames.txt", "db/ages.txt", "db/mobilenums.txt", "db/emailids.txt"}
+var LRU = []string{"db/LRU/usernames.txt", "db/LRU/firstnames.txt", "db/LRU/lastnames.txt", "db/LRU/ages.txt", "db/LRU/mobilenums.txt", "db/LRU/emailids.txt"}
 
 // only add new filenames to the end of the array
 
 // Application functionalities
 
 func DbReset() bool { // Add warning system
- return DbCreate()
+	return DbCreate()
 }
 
 func DbCreate() bool {
+	os.Mkdir("db", os.ModePerm)
+	os.Mkdir("db/LRU", os.ModePerm)
 	for _, filename := range db {
 		// os.Remove(filename)
-		os.Mkdir("db", os.ModePerm)
-	  _, err := os.Create(filename)
+		_, err := os.Create(filename)
 		checkErrorWithCount(err, &numOfErrors)
 
+	}
+	for _, filename := range LRU {
+		// os.Remove(filename)
+		_, err := os.Create(filename)
+		checkErrorWithCount(err, &numOfErrors)
 	}
 	return checkTotalErrors()
 }
 
 func DbDrop() bool {
+	for _, filename := range LRU {
+		err := os.Remove(filename)
+		checkErrorWithCount(err, &numOfErrors)
+	}
+	err := os.Remove("db/LRU")
+	checkErrorWithCount(err, &numOfErrors)
 	for _, filename := range db {
 		err := os.Remove(filename)
 		checkErrorWithCount(err, &numOfErrors)
 	}
-	err := os.Remove("db")
+	err = os.Remove("db")
 	checkErrorWithCount(err, &numOfErrors)
 	return checkTotalErrors()
 }
@@ -59,28 +72,12 @@ func DbDrop() bool {
 func CreateRecord(usrName string, firstName string, lastName string, age int, mobileNos []int, emailIds []string) bool {
 	newUser := User{usrName, firstName, lastName, age, mobileNos, emailIds}
 	if validateAll(&newUser) && validateUserName(&newUser) == nil {
-		if checkIfRequiredFilesExist(db) {
-			newUser.UsrName = fmt.Sprintf("%s\n", newUser.UsrName)
-			writeToFile("db/usernames.txt", newUser.UsrName)
-
-			newUser.FirstName = fmt.Sprintf("%s\n", newUser.FirstName)
-			writeToFile("db/firstnames.txt", newUser.FirstName)
-
-			newUser.LastName = fmt.Sprintf("%s\n", newUser.LastName)
-			writeToFile("db/lastnames.txt", newUser.LastName)
-
-			age := fmt.Sprintf("%s\n", strconv.Itoa(newUser.Age))
-			writeToFile("db/ages.txt", age)
-
-			mobilenums := fmt.Sprintf("%s\n", arrIntToarrStr(newUser.MobileNos))
-			writeToFile("db/mobilenums.txt", mobilenums)
-
-			emailids := fmt.Sprintf("%s\n", newUser.EmailIds)
-			writeToFile("db/emailids.txt", emailids)
-			return true
-		} else {
-			fmt.Println("DATABASE does NOT exist(Check if all the required files exist)")
-			return false
+		if createRecordFunc(usrName, firstName, lastName, age, mobileNos, emailIds, db) {
+			if updateLRU(&newUser) {
+				return true
+			} else {
+				return false
+			}
 		}
 	}
 	return false
@@ -90,10 +87,9 @@ func UpdateRecord(usrName string, firstName string, lastName string, age int, mo
 	_ = setupValid(func() bool {
 		user := User{usrName, firstName, lastName, age, mobileNos, emailIds}
 		if validateAll(&user) {
-			if DeleteRecord(usrName) {
-				CreateRecord(usrName, firstName, lastName, age, mobileNos, emailIds)
-				return true // DO NOT DISPLAY MESSAGES  (Ex - CREATE message during update)
-			}
+			_ = DeleteRecord(usrName)
+			status := CreateRecord(usrName, firstName, lastName, age, mobileNos, emailIds)
+			return status
 		}
 		return false
 	}, usrName)
@@ -102,13 +98,11 @@ func UpdateRecord(usrName string, firstName string, lastName string, age int, mo
 
 func DeleteRecord(usrName string) bool {
 	_ = setupValid(func() bool {
-		usernames := fileToArray("db/usernames.txt")
-		line := lineNum(usrName, usernames)
-		simpleDB := []string{"db/usernames.txt", "db/ages.txt", "db/firstnames.txt", "db/lastnames.txt"} // simple single strings
-		removeStringsFromDb(line, simpleDB)
-		complexDB := []string{"db/emailids.txt", "db/mobilenums.txt"} // array files
-		removeArraysFromDb(line, complexDB)
-		return true
+		if deleteRecordFunc(usrName, db) {
+			_ = deleteRecordFunc(usrName, LRU)
+			return true
+		}
+		return false
 	}, usrName)
 	return false
 }
@@ -128,6 +122,7 @@ func FetchUser(usrName string) User {
 			mobilenums := fetchArrayFromDB(line, "db/mobilenums.txt")
 			mobilenumsInts := arrStrToarrInt(mobilenums) // test
 			user := User{userName, firstName, lastName, age, mobilenumsInts, emailids}
+			updateLRU(&user)
 			return user
 		}
 	}
@@ -241,6 +236,7 @@ func queryString(str string, filename string) bool {
 func writeToFile(filename string, text string) {
 	var file, err = os.OpenFile(filename, os.O_RDWR, 0644)
 	checkErrorWithCount(err, &numOfErrors)
+	defer file.Close()
 	scanner := bufio.NewScanner(file)
 
 	for scanner.Scan() {
@@ -270,8 +266,9 @@ func checkErrorWithCount(e error, errCount *int) { // Change the function to sup
 
 func checkIfRequiredFilesExist(files []string) bool {
 	for _, file := range files {
-		_, err := os.OpenFile(file, os.O_RDWR, 0644)
+		w, err := os.OpenFile(file, os.O_RDWR, 0644)
 		checkErrorWithCount(err, &numOfErrors)
+		defer w.Close()
 	}
 	return checkTotalErrors()
 }
@@ -295,6 +292,7 @@ func arrStrToarrInt(strs []string) (cons []int) {
 func readLine(filename string, lineNum int) (line string, lastLine int) {
 	var file, err = os.OpenFile(filename, os.O_RDWR, 0644)
 	checkErrorWithCount(err, &numOfErrors)
+	defer file.Close()
 	sc := bufio.NewScanner(file)
 	for sc.Scan() {
 		lastLine++
@@ -329,7 +327,7 @@ func lineNum(text string, fileArr []string) (num int) {
 }
 
 func setupValid(function func() bool, usrName string) bool {
-	if checkIfRequiredFilesExist(db) {
+	if checkIfRequiredFilesExist(db) && checkIfRequiredFilesExist(LRU) {
 		if queryString(usrName, "db/usernames.txt") == false {
 			fmt.Println("The following user does not exist: ", usrName)
 			return false
@@ -339,6 +337,49 @@ func setupValid(function func() bool, usrName string) bool {
 		}
 	} else {
 		fmt.Println("DATABASE does NOT exist(Check if all the required files exist)")
+	}
+	return false
+}
+
+func createRecordFunc(usrName string, firstName string, lastName string, age int, mobileNos []int, emailIds []string, fileArr []string) bool {
+	newUser := User{usrName, firstName, lastName, age, mobileNos, emailIds}
+	if checkIfRequiredFilesExist(fileArr) {
+		newUser.UsrName = fmt.Sprintf("%s\n", newUser.UsrName)
+		writeToFile(fileArr[0], newUser.UsrName)
+
+		newUser.FirstName = fmt.Sprintf("%s\n", newUser.FirstName)
+		writeToFile(fileArr[1], newUser.FirstName)
+
+		newUser.LastName = fmt.Sprintf("%s\n", newUser.LastName)
+		writeToFile(fileArr[2], newUser.LastName)
+
+		age := fmt.Sprintf("%s\n", strconv.Itoa(newUser.Age))
+		writeToFile(fileArr[3], age)
+
+		mobilenums := fmt.Sprintf("%s\n", arrIntToarrStr(newUser.MobileNos))
+		writeToFile(fileArr[4], mobilenums)
+
+		emailids := fmt.Sprintf("%s\n", newUser.EmailIds)
+		writeToFile(fileArr[5], emailids)
+		return true
+	} else {
+		fmt.Println("DATABASE does NOT exist(Check if all the required files exist)")
+		return false
+	}
+	return false
+}
+
+func deleteRecordFunc(usrName string, fileArr []string) bool {
+	if checkIfRequiredFilesExist(fileArr) {
+		if queryString(usrName, fileArr[0]) {
+			usernames := fileToArray(fileArr[0])
+			line := lineNum(usrName, usernames)
+			simpleDB := []string{fileArr[0], fileArr[1], fileArr[2], fileArr[3]} // simple single strings
+			removeStringsFromDb(line, simpleDB)
+			complexDB := []string{fileArr[4], fileArr[5]} // array files
+			removeArraysFromDb(line, complexDB)
+			return true
+		}
 	}
 	return false
 }
@@ -400,4 +441,30 @@ func (user *User) printInfo() { // Eventually, try to convert CRUD funtions to m
 	fmt.Println("Age: ", user.Age)
 	fmt.Println("Email-Id(s): ", user.EmailIds)
 	fmt.Println("Mobile-No.(s): ", user.MobileNos)
+}
+
+// Internal LRU
+func updateLRU(user *User) bool {
+	if checkIfRequiredFilesExist(LRU) {
+		if queryString(user.UsrName, "db/LRU/usernames.txt") {
+			_ = deleteRecordFunc(user.UsrName, LRU)
+			_ = createRecordFunc(user.UsrName, user.FirstName, user.LastName, user.Age, user.MobileNos, user.EmailIds, LRU)
+			LRUarr := fileToArray("db/LRU/usernames.txt")
+			controlLRUlength(&LRUarr)
+			return true
+		} else {
+			_ = createRecordFunc(user.UsrName, user.FirstName, user.LastName, user.Age, user.MobileNos, user.EmailIds, LRU)
+			LRUarr := fileToArray("db/LRU/usernames.txt")
+			controlLRUlength(&LRUarr)
+			return true
+		}
+	}
+	return false
+}
+
+func controlLRUlength(LRUarr *[]string) {
+	if len(*LRUarr) > 6 {
+		x := *LRUarr
+		deleteRecordFunc(x[0], LRU)
+	}
 }
