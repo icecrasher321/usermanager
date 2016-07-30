@@ -6,15 +6,17 @@ import (
 
 func main() {
 	//protocol()
-	//fdb.UpdateRecord("iccraft", "flunatic3", "100", 42, []int{9741718043, 9741719085, 9741717865}, []string{"lo@tytytytyt.com", "10000@101.com"})
-	//fdb.DeleteRecord("watermelo")
-	//fdb.FindByUserName("icecraft")
-	//fdb.CreateRecord("watermelo", "Space", "X", 43, []int{9741719086, 9741719085, 9741719043}, []string{"elon@musk.com"})
+	//fdb.FetchUserUI("icet")
+	//fdb.UpdateRecordUI("iccrat", "flunatic3", "100", 64, []int{9741712134, 9741719085, 9741717865}, []string{"lo@tytytytyt.com", "10000@101.com"})
+	//fdb.DeleteRecord("iccrat")
+	//fdb.CreateRecord("watermeloyyyt", "Space", "X", 43, []int{9741712134, 9741719085, 9741719043}, []string{"elon@musk.com"})
+	//fdb.DbCreate()
+	//fdb.DbDrop()
 }
 
 func protocol() {
 	fdb.DbReset()
-	fdb.CreateRecord("iecraf", "Vikhyath", "Mondreti", 13, []int{9741719086, 9741719085, 9741719043}, []string{"1@2.com"})
+	fdb.CreateRecordUI("iecraf", "Vikhyath", "Mondreti", 13, []int{9741719086, 9741719085, 9741719043}, []string{"1@2.com"})
 	fdb.CreateRecord("icecrat", "Vikhyath", "Mondreti", 13, []int{9741719086, 9741719085}, []string{"1@2.com", "3@4.com"})
 	fdb.CreateRecord("icecrft", "Vikhyath", "Mondreti", 13, []int{9741719086, 9741719085}, []string{"1@2.com"})
 	fdb.CreateRecord("icecaft", "lunatic", "1000", 3, []int{9741719086, 9741719085, 9741717865}, []string{"locker@hotmail.com", "3@4.com"})
