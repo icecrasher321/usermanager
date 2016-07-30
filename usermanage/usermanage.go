@@ -71,19 +71,21 @@ func DbDrop() bool {
 
 func CreateRecord(usrName string, firstName string, lastName string, age int, mobileNos []int, emailIds []string) bool {
 	newUser := User{usrName, firstName, lastName, age, mobileNos, emailIds}
-	if validateAll(&newUser) && validateUserName(&newUser) == nil {
-		if createRecordFunc(usrName, firstName, lastName, age, mobileNos, emailIds, db) {
-			if updateLRU(&newUser) {
-				return true
-			} else {
-				return false
+	if checkIfRequiredFilesExist(db) && checkIfRequiredFilesExist(LRU) {
+		if validateAll(&newUser) && validateUserName(&newUser) == nil {
+			if createRecordFunc(usrName, firstName, lastName, age, mobileNos, emailIds, db) {
+				if updateLRU(&newUser) {
+					return true
+				} else {
+					return false
+				}
 			}
 		}
 	}
 	return false
 }
 
-func UpdateRecord(usrName string, firstName string, lastName string, age int, mobileNos []int, emailIds []string) bool { // STILL NEEDS DEVELOPMENT
+func UpdateRecord(usrName string, firstName string, lastName string, age int, mobileNos []int, emailIds []string) bool { // STILL NEEDS DEVELOPMENT - NOT SYNCHRONISEd - DeleteRecord AND CreateRecord
 	_ = setupValid(func() bool {
 		user := User{usrName, firstName, lastName, age, mobileNos, emailIds}
 		if validateAll(&user) {
@@ -108,22 +110,16 @@ func DeleteRecord(usrName string) bool {
 }
 
 func FetchUser(usrName string) User {
-	if checkIfRequiredFilesExist(db) {
-		if queryString(usrName, "db/usernames.txt") == false {
-			fmt.Println("The following user does not exist: ", usrName)
+	if checkIfRequiredFilesExist(db) && checkIfRequiredFilesExist(LRU) {
+		if queryString(usrName, "db/LRU/usernames.txt") == false {
+			if queryString(usrName, "db/usernames.txt") == false {
+				fmt.Println("The following user does not exist: ", usrName)
+				return User{}
+			} else {
+				return fetchUserFunc(usrName, db)
+			}
 		} else {
-			usernames := fileToArray("db/usernames.txt")
-			line := lineNum(usrName, usernames)
-			userName := usernames[line]
-			firstName := fetchStringFromDb(line, "db/firstnames.txt")
-			lastName := fetchStringFromDb(line, "db/lastnames.txt")
-			age, _ := strconv.Atoi(fetchStringFromDb(line, "db/ages.txt"))
-			emailids := fetchArrayFromDB(line, "db/emailids.txt")
-			mobilenums := fetchArrayFromDB(line, "db/mobilenums.txt")
-			mobilenumsInts := arrStrToarrInt(mobilenums) // test
-			user := User{userName, firstName, lastName, age, mobilenumsInts, emailids}
-			updateLRU(&user)
-			return user
+			return fetchUserFunc(usrName, LRU)
 		}
 	}
 	return User{}
@@ -186,9 +182,16 @@ func validateAge(user *User) error {
 	return nil
 }
 
-func validateUserName(user *User) error {
+func validateUserName(user *User) error { // TRY REMOVE REDUNDACY BELOW
 	user.UsrName = stripSpaces(strings.ToLower(user.UsrName))
-	if queryString((user.UsrName), "db/usernames.txt") {
+	if queryString(user.UsrName, "db/LRU/usernames.txt") == false {
+		if queryString(user.UsrName, "db/usernames.txt") {
+			errMsg := fmt.Sprintf("%s (Username) already taken", user.UsrName)
+			err := errors.New(errMsg)
+			checkErrorWithCount(err, &numOfErrors)
+			return err
+		}
+	} else {
 		errMsg := fmt.Sprintf("%s (Username) already taken", user.UsrName)
 		err := errors.New(errMsg)
 		checkErrorWithCount(err, &numOfErrors)
@@ -328,9 +331,14 @@ func lineNum(text string, fileArr []string) (num int) {
 
 func setupValid(function func() bool, usrName string) bool {
 	if checkIfRequiredFilesExist(db) && checkIfRequiredFilesExist(LRU) {
-		if queryString(usrName, "db/usernames.txt") == false {
-			fmt.Println("The following user does not exist: ", usrName)
-			return false
+		if queryString(usrName, "db/LRU/usernames.txt") == false {
+			if queryString(usrName, "db/usernames.txt") == false {
+				fmt.Println("The following user does not exist: ", usrName)
+				return false
+			} else {
+				function()
+				return true
+			}
 		} else {
 			function()
 			return true
@@ -340,6 +348,8 @@ func setupValid(function func() bool, usrName string) bool {
 	}
 	return false
 }
+
+// Raw functionality
 
 func createRecordFunc(usrName string, firstName string, lastName string, age int, mobileNos []int, emailIds []string, fileArr []string) bool {
 	newUser := User{usrName, firstName, lastName, age, mobileNos, emailIds}
@@ -382,6 +392,21 @@ func deleteRecordFunc(usrName string, fileArr []string) bool {
 		}
 	}
 	return false
+}
+
+func fetchUserFunc(usrName string, fileArr []string) User {
+	usernames := fileToArray(fileArr[0])
+	line := lineNum(usrName, usernames)
+	userName := usernames[line]
+	firstName := fetchStringFromDb(line, fileArr[1])
+	lastName := fetchStringFromDb(line, fileArr[2])
+	age, _ := strconv.Atoi(fetchStringFromDb(line, fileArr[3]))
+	emailids := fetchArrayFromDB(line, fileArr[5])
+	mobilenums := fetchArrayFromDB(line, fileArr[4])
+	mobilenumsInts := arrStrToarrInt(mobilenums) // test
+	user := User{userName, firstName, lastName, age, mobilenumsInts, emailids}
+	updateLRU(&user)
+	return user
 }
 
 // Programmable arrays - ORM type method
