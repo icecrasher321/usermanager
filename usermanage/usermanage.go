@@ -11,6 +11,7 @@ import (
 	invalid "github.com/asaskevich/govalidator"
 	"strconv"
 	"unicode"
+	"github.com/ivpusic/grpool"
 )
 
 type User struct {
@@ -248,6 +249,7 @@ func writeToFile(filename string, text string) {
 	fmted := fmt.Sprintf("%s", text)
 	_, err = file.WriteString(fmted)
 	err = file.Sync()
+	checkErrorWithCount(err, &numOfErrors)
 }
 
 func checkError(e error) {
@@ -354,24 +356,46 @@ func setupValid(function func() bool, usrName string) bool {
 func createRecordFunc(usrName string, firstName string, lastName string, age int, mobileNos []int, emailIds []string, fileArr []string) bool {
 	newUser := User{usrName, firstName, lastName, age, mobileNos, emailIds}
 	if checkIfRequiredFilesExist(fileArr) {
-		newUser.UsrName = fmt.Sprintf("%s\n", newUser.UsrName)
-		writeToFile(fileArr[0], newUser.UsrName)
 
-		newUser.FirstName = fmt.Sprintf("%s\n", newUser.FirstName)
-		writeToFile(fileArr[1], newUser.FirstName)
+	pool := grpool.NewPool(12, 6)
+	defer pool.Release()
 
-		newUser.LastName = fmt.Sprintf("%s\n", newUser.LastName)
-		writeToFile(fileArr[2], newUser.LastName)
+	pool.WaitCount(6)
 
-		age := fmt.Sprintf("%s\n", strconv.Itoa(newUser.Age))
-		writeToFile(fileArr[3], age)
-
-		mobilenums := fmt.Sprintf("%s\n", arrIntToarrStr(newUser.MobileNos))
-		writeToFile(fileArr[4], mobilenums)
-
-		emailids := fmt.Sprintf("%s\n", newUser.EmailIds)
-		writeToFile(fileArr[5], emailids)
-		return true
+for i := 0; i < 1; i++ {
+		pool.JobQueue <- func() {
+			newUser.UsrName = fmt.Sprintf("%s\n", newUser.UsrName)
+	 	 	writeToFile(fileArr[0], newUser.UsrName)
+			defer pool.JobDone()
+		}
+		pool.JobQueue <- func() {
+			newUser.FirstName = fmt.Sprintf("%s\n", newUser.FirstName)
+			writeToFile(fileArr[1], newUser.FirstName)
+			defer pool.JobDone()
+		}
+		pool.JobQueue <- func() {
+			newUser.LastName = fmt.Sprintf("%s\n", newUser.LastName)
+	 		writeToFile(fileArr[2], newUser.LastName)
+			defer pool.JobDone()
+		}
+		pool.JobQueue <- func() {
+			age := fmt.Sprintf("%s\n", strconv.Itoa(newUser.Age))
+	 		writeToFile(fileArr[3], age)
+			defer pool.JobDone()
+		}
+		pool.JobQueue <- func() {
+			mobilenums := fmt.Sprintf("%s\n", arrIntToarrStr(newUser.MobileNos))
+	 		writeToFile(fileArr[4], mobilenums)
+			defer pool.JobDone()
+		}
+		pool.JobQueue <- func() {
+			emailids := fmt.Sprintf("%s\n", newUser.EmailIds)
+	 		writeToFile(fileArr[5], emailids)
+			defer pool.JobDone()
+		}
+}
+  pool.WaitAll()
+	return true
 	} else {
 		fmt.Println("DATABASE does NOT exist(Check if all the required files exist)")
 		return false
@@ -439,6 +463,7 @@ func removeArraysFromDb(lnnum int, database []string) {
 		fileArrStr = strings.Join(fileArr, "]\n")
 		os.Create(field)
 		writeToFile(field, fileArrStr)
+
 	}
 }
 
