@@ -9,9 +9,9 @@ import (
 	"bufio"
 	"errors"
 	invalid "github.com/asaskevich/govalidator"
+	"github.com/ivpusic/grpool"
 	"strconv"
 	"unicode"
-	"github.com/ivpusic/grpool"
 )
 
 type User struct {
@@ -357,15 +357,14 @@ func createRecordFunc(usrName string, firstName string, lastName string, age int
 	newUser := User{usrName, firstName, lastName, age, mobileNos, emailIds}
 	if checkIfRequiredFilesExist(fileArr) {
 
-	pool := grpool.NewPool(12, 6)
-	defer pool.Release()
+		pool := grpool.NewPool(12, 6)
+		defer pool.Release()
 
-	pool.WaitCount(6)
+		pool.WaitCount(6)
 
-for i := 0; i < 1; i++ {
 		pool.JobQueue <- func() {
 			newUser.UsrName = fmt.Sprintf("%s\n", newUser.UsrName)
-	 	 	writeToFile(fileArr[0], newUser.UsrName)
+			writeToFile(fileArr[0], newUser.UsrName)
 			defer pool.JobDone()
 		}
 		pool.JobQueue <- func() {
@@ -375,27 +374,26 @@ for i := 0; i < 1; i++ {
 		}
 		pool.JobQueue <- func() {
 			newUser.LastName = fmt.Sprintf("%s\n", newUser.LastName)
-	 		writeToFile(fileArr[2], newUser.LastName)
+			writeToFile(fileArr[2], newUser.LastName)
 			defer pool.JobDone()
 		}
 		pool.JobQueue <- func() {
 			age := fmt.Sprintf("%s\n", strconv.Itoa(newUser.Age))
-	 		writeToFile(fileArr[3], age)
+			writeToFile(fileArr[3], age)
 			defer pool.JobDone()
 		}
 		pool.JobQueue <- func() {
 			mobilenums := fmt.Sprintf("%s\n", arrIntToarrStr(newUser.MobileNos))
-	 		writeToFile(fileArr[4], mobilenums)
+			writeToFile(fileArr[4], mobilenums)
 			defer pool.JobDone()
 		}
 		pool.JobQueue <- func() {
 			emailids := fmt.Sprintf("%s\n", newUser.EmailIds)
-	 		writeToFile(fileArr[5], emailids)
+			writeToFile(fileArr[5], emailids)
 			defer pool.JobDone()
 		}
-}
-  pool.WaitAll()
-	return true
+		pool.WaitAll()
+		return true
 	} else {
 		fmt.Println("DATABASE does NOT exist(Check if all the required files exist)")
 		return false
@@ -418,19 +416,51 @@ func deleteRecordFunc(usrName string, fileArr []string) bool {
 	return false
 }
 
+var mpUser = User{} // Multi-Purpose user - Used as a global variable for fetchUserFunc
+
 func fetchUserFunc(usrName string, fileArr []string) User {
+	pool := grpool.NewPool(12, 6)
+	defer pool.Release()
+
+	pool.WaitCount(6)
 	usernames := fileToArray(fileArr[0])
 	line := lineNum(usrName, usernames)
-	userName := usernames[line]
-	firstName := fetchStringFromDb(line, fileArr[1])
-	lastName := fetchStringFromDb(line, fileArr[2])
-	age, _ := strconv.Atoi(fetchStringFromDb(line, fileArr[3]))
-	emailids := fetchArrayFromDB(line, fileArr[5])
-	mobilenums := fetchArrayFromDB(line, fileArr[4])
-	mobilenumsInts := arrStrToarrInt(mobilenums) // test
-	user := User{userName, firstName, lastName, age, mobilenumsInts, emailids}
-	updateLRU(&user)
-	return user
+
+	pool.JobQueue <- func() {
+		userName := usernames[line]
+		mpUser.UsrName = userName
+		defer pool.JobDone()
+	}
+	pool.JobQueue <- func() {
+		firstName := fetchStringFromDb(line, fileArr[1])
+		mpUser.FirstName = firstName
+		defer pool.JobDone()
+	}
+	pool.JobQueue <- func() {
+		lastName := fetchStringFromDb(line, fileArr[2])
+		mpUser.LastName = lastName
+		defer pool.JobDone()
+	}
+	pool.JobQueue <- func() {
+		age, _ := strconv.Atoi(fetchStringFromDb(line, fileArr[3]))
+		mpUser.Age = age
+		defer pool.JobDone()
+	}
+	pool.JobQueue <- func() {
+		emailids := fetchArrayFromDB(line, fileArr[5])
+		mpUser.EmailIds = emailids
+		defer pool.JobDone()
+	}
+	pool.JobQueue <- func() {
+		mobilenums := fetchArrayFromDB(line, fileArr[4])
+		mobilenumsInts := arrStrToarrInt(mobilenums)
+		mpUser.MobileNos = mobilenumsInts
+		defer pool.JobDone()
+	}
+	pool.WaitAll()
+
+	updateLRU(&mpUser)
+	return mpUser
 }
 
 // Programmable arrays - ORM type method
